@@ -1,0 +1,5 @@
+*.env
+sketches/
+node_modules/
+dist/
+coverage/
