@@ -10,6 +10,11 @@ const MARKER_Y = 16;
 const BRUSH_TOP = 30;
 const BRUSH_BOTTOM = HEIGHT - 22;
 const MIN_WINDOW = 10;
+const PLAY_INTERVAL_MS = 100;
+const PLAY_STEP_SEC = 1;
+
+const BTN =
+  'min-h-[44px] rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm tabular-nums text-zinc-200 hover:border-zinc-500 active:bg-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60';
 
 const ZOOM_STEPS = [5, 10, 15, 30, 60, 120, 180, 300, 600, 900];
 
@@ -42,6 +47,7 @@ export function Timeline() {
   const [wrapRef, width] = useContainerWidth<HTMLDivElement>();
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ mode: DragMode; grabOffset: number } | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   // Derived values use safe fallbacks so hooks below run unconditionally
   // (the loading early-return comes after all hook calls).
@@ -81,7 +87,27 @@ export function Timeline() {
     return () => el.removeEventListener('wheel', onWheel);
   });
 
+  // Space / play button: self chaining timeout so each tick uses the most fresh cursor and effect stays a plain dep tracked hook.
+  useEffect(() => {
+    if (!playing || !state) return;
+    if (state.cursorSec >= state.durationSec) {
+      setPlaying(false);
+      return;
+    }
+    const id = window.setTimeout(
+      () => dispatch({ type: 'cursor', sec: state.cursorSec + PLAY_STEP_SEC }),
+      PLAY_INTERVAL_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [playing, state, dispatch]);
+
   if (!incident || !state) return null;
+
+  const togglePlay = () => {
+    // Play from start when pressed at the end of the incident.
+    if (!playing && cursorSec >= duration) dispatch({ type: 'cursor', sec: 0 });
+    setPlaying((p) => !p);
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     const target = e.target as Element;
@@ -135,11 +161,16 @@ export function Timeline() {
         break;
       case '+':
       case '=':
+      case '<':
         zoomAround(cursorSec, 0.8);
         break;
       case '-':
       case '_':
+      case '>':
         zoomAround(cursorSec, 1.25);
+        break;
+      case ' ':
+        togglePlay();
         break;
       case '0':
         dispatch({ type: 'window', start: 0, end: duration });
@@ -157,7 +188,7 @@ export function Timeline() {
   const cursorX = x(cursorSec);
 
   return (
-    <div ref={wrapRef} className="w-full">
+    <div ref={wrapRef} className="w-full [-webkit-tap-highlight-color:transparent]">
       <svg
         ref={svgRef}
         width={width}
@@ -197,6 +228,9 @@ export function Timeline() {
         <rect x={PAD} y={BRUSH_TOP} width={Math.max(0, x(ws) - PAD)} height={BRUSH_BOTTOM - BRUSH_TOP} fill="rgba(9,9,11,0.55)" />
         <rect x={x(we)} y={BRUSH_TOP} width={Math.max(0, PAD + innerW - x(we))} height={BRUSH_BOTTOM - BRUSH_TOP} fill="rgba(9,9,11,0.55)" />
 
+        {/* scrub overlay */}
+        <rect data-handle="scrub" x={PAD} y={BRUSH_TOP} width={innerW} height={BRUSH_BOTTOM - BRUSH_TOP} fill="transparent" style={{ cursor: 'crosshair' }} />
+
         {/* brush window */}
         <rect
           data-handle="move"
@@ -209,7 +243,9 @@ export function Timeline() {
           strokeWidth={1}
           style={{ cursor: 'grab' }}
         />
-        {/* brush handles */}
+        {/* brush handles*/}
+        <rect data-handle="l" x={x(ws) - 10} y={BRUSH_TOP} width={20} height={BRUSH_BOTTOM - BRUSH_TOP} fill="transparent" style={{ cursor: 'ew-resize' }} />
+        <rect data-handle="r" x={x(we) - 10} y={BRUSH_TOP} width={20} height={BRUSH_BOTTOM - BRUSH_TOP} fill="transparent" style={{ cursor: 'ew-resize' }} />
         <rect
           data-handle="l"
           x={x(ws) - 3}
@@ -248,9 +284,6 @@ export function Timeline() {
           );
         })}
 
-        {/* invisible overlay captures scrub gestures above brush elements */}
-        <rect data-handle="scrub" x={PAD} y={BRUSH_TOP} width={innerW} height={BRUSH_BOTTOM - BRUSH_TOP} fill="transparent" style={{ cursor: 'crosshair' }} />
-
         {/* playhead (keyboard-operable slider) */}
         <g
           tabIndex={0}
@@ -271,14 +304,41 @@ export function Timeline() {
           <rect x={cursorX - 6} y={BRUSH_TOP - 8} width={12} height={BRUSH_BOTTOM - BRUSH_TOP + 10} fill="transparent" />
         </g>
       </svg>
-      <p className="mt-1 text-xs text-zinc-500">
-        Drag to scrub · drag window to pan · edge handles resize · scroll zooms ·{' '}
-        <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">←</kbd>{' '}
-        <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">→</kbd>{' '}
-        scrub (<kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">Shift</kbd> = 30s){' '}
-        <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">+</kbd>
-        <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">−</kbd> zoom{' '}
-        <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">0</kbd> reset window
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Timeline playback">
+        <button type="button" className={BTN} aria-label="Step back 30 seconds" onClick={() => dispatch({ type: 'cursor', sec: cursorSec - 30 })}>
+          −30s
+        </button>
+        <button type="button" className={BTN} aria-pressed={playing} aria-label={playing ? 'Pause' : 'Play'} onClick={togglePlay}>
+          {playing ? '⏸' : '▶'}
+        </button>
+        <button type="button" className={BTN} aria-label="Step forward 30 seconds" onClick={() => dispatch({ type: 'cursor', sec: cursorSec + 30 })}>
+          +30s
+        </button>
+        <span aria-hidden className="mx-1 h-5 w-px bg-zinc-800" />
+        <button type="button" className={BTN} aria-label="Zoom out" onClick={() => zoomAround(cursorSec, 1.25)}>
+          −
+        </button>
+        <button type="button" className={BTN} aria-label="Reset window" onClick={() => dispatch({ type: 'window', start: 0, end: duration })}>
+          0
+        </button>
+        <button type="button" className={BTN} aria-label="Zoom in" onClick={() => zoomAround(cursorSec, 0.8)}>
+          +
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        Drag to scrub · drag window to pan · edge handles resize
+        <span className="hidden sm:inline">
+          {' '}· scroll zooms ·{' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">←</kbd>{' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">→</kbd>{' '}
+          scrub (<kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">Shift</kbd> = 30s){' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">&lt;</kbd>
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">&gt;</kbd> or{' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">+</kbd>
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">−</kbd> zoom ·{' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">Space</kbd> play ·{' '}
+          <kbd className="rounded border border-zinc-700 bg-zinc-800 px-1 font-mono">0</kbd> reset window
+        </span>
       </p>
     </div>
   );

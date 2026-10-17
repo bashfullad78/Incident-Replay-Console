@@ -99,10 +99,10 @@ function Shell() {
         </section>
         <Charts />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="h-[560px] lg:col-span-2">
+          <div className="h-[440px] lg:col-span-2 lg:h-[560px]">
             <EventStream />
           </div>
-          <div className="h-[560px]">
+          <div className="h-[440px] lg:h-[560px]">
             <DetailPanel />
           </div>
         </div>

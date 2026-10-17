@@ -23,8 +23,11 @@ npm run generate   # regenerate deterministic incident fixtures (dev time only)
 - Inspect individual events and the metric values at the cursor.
 - The URL encodes the full investigation state — refresh or share the link and
   the same view is reproduced.
-- Keyboard-first: arrow keys scrub, `+`/`-` zoom, `Home`/`End` jump, `0` resets
-  the window.
+- Keyboard-first: arrow keys scrub (`Shift` = 30s), `+`/`-` or `<`/`>` zoom,
+  `Space` plays the timeline, `Home`/`End` jump, `0` resets the window.
+- Touch-friendly: drag to scrub, drag the window or its edge handles to pan and
+  resize, and a transport bar (step ±30s, play, zoom, reset) mirrors every
+  keyboard control with 44px targets.
 
 ## Architecture
 
